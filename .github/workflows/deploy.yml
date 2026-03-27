@@ -1,4 +1,4 @@
-name: Deploy Docker Image
+name: Build, Push & Deploy
 
 on:
   push:
@@ -6,12 +6,12 @@ on:
       - main
 
 jobs:
-  build-and-push:
+  deploy:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code từ GitHub
-      - name: Checkout source code
+      # 1. Lấy code từ GitHub
+      - name: Checkout code
         uses: actions/checkout@v4
 
       # 2. Đăng nhập Docker Hub
@@ -21,7 +21,7 @@ jobs:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
 
-      # 3. Build & Push Docker Image
+      # 3. Build & Push image lên Docker Hub
       - name: Build and Push Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -29,25 +29,34 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKER_USERNAME }}/demo-java:latest
-            ${{ secrets.DOCKER_USERNAME }}/demo-java:${{ github.sha }}
 
-      # 4. Triển khai lên DevOps Classroom
+      # 4. Triển khai lên DevOps Classroom (Cấu hình cho Slot 2)
       - name: Triển khai lên DevOps Classroom
         run: |
-          REPO="nguyentuananhh/demo-java"
+          # Thiết lập thông tin Repo dựa trên tên đăng nhập Docker của bạn
+          REPO="${{ secrets.DOCKER_USERNAME }}/demo-java"
+          
+          # Theo ảnh hướng dẫn của ithutech, Slot 2 chạy app ở port 80
           CONTAINER_PORT=80
+
+          # Gửi yêu cầu Webhook với slot=2
           RESPONSE=$(curl -sS -w "\n%{http_code}" -X POST "${{ secrets.DEPLOY_URL }}?repo=$REPO&tag=latest&slot=2&container_port=$CONTAINER_PORT&strict_container_port=0")
+
+          # Tách nội dung phản hồi và mã trạng thái HTTP
           BODY=$(echo "$RESPONSE" | sed '$d')
           CODE=$(echo "$RESPONSE" | tail -n1)
+
           echo "Webhook HTTP: $CODE"
+
           if [ "$CODE" -lt 200 ] || [ "$CODE" -ge 300 ]; then
-            echo "Deploy thất bại. Xem chi tiết trong nhóm log bên dưới."
-            echo "::group::Chi tiết webhook JSON"
+            echo "Deploy thất bại."
+            echo "::group::Chi tiết lỗi từ máy chủ (JSON)"
             echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
             echo "::endgroup::"
             exit 1
           fi
+
           echo "Deploy thành công."
-          echo "::group::Chi tiết webhook JSON"
+          echo "::group::Phản hồi chi tiết"
           echo "$BODY" | python3 -m json.tool 2>/dev/null || echo "$BODY"
           echo "::endgroup::"
